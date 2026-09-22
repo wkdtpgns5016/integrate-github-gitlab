@@ -1,68 +1,33 @@
 stages:
-  - test
-  - build
-  - deploy
+  - read-hash
+  - update-test-branch
 
-.rules: &main_only
+read-commit-hash:
+  stage: read-hash
+  image: alpine:latest
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
-
-check-testfile:
-  stage: test
-  image: alpine:latest
-  <<: *main_only
   script:
-    - test -f testfile
-    - cat testfile
-
-update-tag:
-  stage: build
-  image: alpine:latest
-  <<: *main_only
-  script:
-    - sed -i "s/^tag:.*/tag:${CI_COMMIT_SHORT_SHA}/" testfile
-    - cat testfile
+    - echo "COMMIT_HASH=${CI_COMMIT_SHORT_SHA}" > hash.env
   artifacts:
-    paths:
-      - testfile
-    expire_in: 1 hour
+    reports:
+      dotenv: hash.env
 
-push-tag:
-  stage: deploy
+update-test-branch:
+  stage: update-test-branch
   image: alpine:latest
   rules:
     - if: '$CI_COMMIT_BRANCH == "main"'
       when: manual
   before_script:
     - apk add --no-cache git
-    - git config user.name "gitlab-ci"
-    - git config user.email "gitlab-ci@local"
-  variables:
-    GITHUB_REMOTE: "https://x-access-token:${GITHUB_PUSH_TOKEN}@github.com/${GITHUB_REPO}.git"
+    - git config --global user.name "gitlab-ci"
+    - git config --global user.email "gitlab-ci@local"
   script:
-    # update-tag 스테이지의 artifact(testfile)가 checkout 위에 덮어써진 상태라, branch 를
-    # 바꾸기 전에 그 내용을 잠시 빼둔다 (checkout 하면 working tree가 그 브랜치 내용으로 바뀜).
-    - cp testfile /tmp/testfile
-    # GitHub 에 test 브랜치가 이미 있으면 그걸 이어서 커밋하고, 없으면 고아(orphan) 브랜치로 새로 만든다.
-    - git fetch "$GITHUB_REMOTE" refs/heads/test:refs/remotes/github/test || true
-    - |
-      if git rev-parse --verify refs/remotes/github/test >/dev/null 2>&1; then
-        echo "기존 test 브랜치 발견, 이어서 커밋"
-        git checkout -B test refs/remotes/github/test
-      else
-        echo "test 브랜치 없음, 고아 브랜치로 새로 생성"
-        git checkout --orphan test
-        git rm -rf --cached . >/dev/null
-      fi
-    - cp /tmp/testfile testfile
+    - git clone "https://x-access-token:${GITHUB_PUSH_TOKEN}@github.com/${GITHUB_REPO}.git" repo
+    - cd repo
+    - git checkout test || git checkout -b test
+    - echo "tag:${COMMIT_HASH}" > testfile
     - git add testfile
-    # 변경사항이 없으면(=이미 같은 값) commit이 실패하므로 무시하고 넘어간다.
-    - 'git commit -m "ci: update tag to ${CI_COMMIT_SHORT_SHA}" || echo "변경사항 없음, 커밋 건너뜀"'
-    # CI_JOB_TOKEN(기본 origin 인증)은 push에 못 쓰고, 애초에 여긴 GitLab이 아니라
-    # GitHub 로 되돌려 push하는 것이라 GITHUB_PUSH_TOKEN(=GITHUB_PAT)으로 인증한다.
-    # main 이 아니라 test 브랜치로 보낸다 — mirror-to-gitlab.yml 은 main push 에만 반응하므로
-    # 이 push 는 애초에 그 워크플로를 트리거하지 않는다 (무한루프 걱정 없음).
-    # 기존 브랜치의 정확한 최신 tip 위에서 커밋했으므로(혹은 새 브랜치라) fast-forward라 --force 불필요.
-    # GitLab CI 체크아웃은 detached HEAD 라서 "test"만 쓰면 브랜치인지 추론을 못 하므로
-    # refs/heads/test 로 완전한 ref 경로를 명시한다.
-    - git push "$GITHUB_REMOTE" "HEAD:refs/heads/test"
+    - git commit -m "update tag to ${COMMIT_HASH}" || echo "변경사항 없음, 커밋 건너뜀"
+    - git push origin test
