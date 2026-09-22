@@ -1,0 +1,52 @@
+# GitLab CE + GitLab Runner
+#
+# 직접 `docker compose`를 호출하지 말고 gitlab/up.sh 를 사용하세요.
+# (.env 는 같은 디렉터리의 .env 이므로 --env-file 이 필요합니다.)
+
+services:
+  gitlab:
+    image: gitlab/gitlab-ce:${GITLAB_VERSION:-19.4.0-ce.0}
+    container_name: gitlab
+    hostname: gitlab
+    restart: unless-stopped
+    shm_size: 256m
+    environment:
+      GITLAB_ROOT_PASSWORD: ${GITLAB_ROOT_PASSWORD:?gitlab/.env 에 GITLAB_ROOT_PASSWORD 를 설정하세요}
+      # GITLAB_HOST:GITLAB_HTTP_PORT 는 GitHub Actions 에서 접근하는 주소이므로 external_url 로 사용한다.
+      # 컨테이너 안의 nginx 는 항상 80 으로 listen 하고, 호스트 포트는 아래 ports 에서 매핑한다.
+      # 비밀번호는 quoting 문제를 피하려고 Ruby 의 ENV 로 읽는다. (최초 초기화 시에만 적용됨)
+      GITLAB_OMNIBUS_CONFIG: |
+        external_url 'http://${GITLAB_HOST:?gitlab/.env 에 GITLAB_HOST 를 설정하세요}:${GITLAB_HTTP_PORT:-8088}'
+        gitlab_rails['initial_root_password'] = ENV['GITLAB_ROOT_PASSWORD']
+        nginx['listen_port'] = 80
+        nginx['listen_https'] = false
+    ports:
+      - "${GITLAB_HTTP_PORT:-8088}:80"
+    volumes:
+      - gitlab-config:/etc/gitlab
+      - gitlab-logs:/var/log/gitlab
+      - gitlab-data:/var/opt/gitlab
+    networks:
+      - gitlab
+
+  gitlab-runner:
+    # GitLab 본체와 같은 버전으로 고정 (버전 스큐로 인한 호환성 문제 방지)
+    image: gitlab/gitlab-runner:${GITLAB_RUNNER_VERSION:-v19.4.0}
+    container_name: gitlab-runner
+    restart: unless-stopped
+    volumes:
+      - gitlab-runner-config:/etc/gitlab-runner
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - gitlab
+
+volumes:
+  gitlab-config:
+  gitlab-logs:
+  gitlab-data:
+  gitlab-runner-config:
+
+networks:
+  gitlab:
+    # 러너가 띄우는 job 컨테이너도 이 네트워크에 붙여서 http://gitlab 로 접근하게 한다.
+    name: gitlab-net
