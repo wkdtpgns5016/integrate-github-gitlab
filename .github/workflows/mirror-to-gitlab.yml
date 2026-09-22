@@ -15,11 +15,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Extract GitLab host (without port)
+        id: gitlab_host
+        run: echo "host=${GITLAB_HOST%%:*}" >> "$GITHUB_OUTPUT"
+        env:
+          GITLAB_HOST: ${{ vars.GITLAB_HOST }}
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
-          authkey: ${{ secrets.TS_AUTHKEY }}
-          ping: ${{ vars.GITLAB_HOST }}
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
+          ping: ${{ steps.gitlab_host.outputs.host }}
 
       - name: Push to GitLab
         run: |
