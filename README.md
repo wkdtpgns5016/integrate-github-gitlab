@@ -15,9 +15,13 @@ GitLab 쪽 CI는 자체 등록된 GitLab Runner(Docker executor)가 처리합니
 
 ### 0) 미리 준비해둘 것
 - **GitHub PAT** — classic이면 `repo` 스코프, fine-grained면 대상 레포에 Contents(Read)/Secrets(RW)/Variables(RW) 권한.
-- **Tailscale auth key 2개** (https://login.tailscale.com/admin/settings/keys)
-  - `TAILSCALE_HOST_AUTHKEY`: 이 VM 자신을 tailnet에 조인시킬 때 사용. **Ephemeral은 꺼서** 발급.
-  - `TS_AUTHKEY`: GitHub Actions가 매 실행마다 임시로 tailnet에 접속할 때 사용. **Ephemeral + Reusable을 켜서** 발급.
+- **Tailscale 인증 정보 2가지**
+  - `TAILSCALE_HOST_AUTHKEY` (https://login.tailscale.com/admin/settings/keys): 이 VM 자신을 tailnet에
+    조인시킬 때 사용하는 auth key. **Ephemeral은 꺼서, Reusable은 켜서** 발급.
+  - `TS_OAUTH_CLIENT_ID` / `TS_OAUTH_CLIENT_SECRET` (https://login.tailscale.com/admin/settings/oauth):
+    GitHub Actions 워크플로가 매 실행마다 임시로 tailnet에 접속할 때 사용. Scopes는 **"Auth Keys" Write**,
+    Tags는 **`tag:ci`**로 발급하고, tailnet ACL의 `tagOwners`에 `tag:ci`를 등록해둬야 합니다
+    (자세한 내용은 [.env.example](gitlab/.env.example) 주석 참고).
 - 미러링 대상 **GitHub 레포** (`owner/repo`).
 
 ### 1) 패키지 설치 (Ubuntu/Debian 기준)
@@ -54,7 +58,7 @@ cp .env.example .env
 
 - `GITHUB_REPO`, `GITHUB_PAT`
 - `GITLAB_ROOT_PASSWORD`
-- `TAILSCALE_HOST_AUTHKEY`, `TS_AUTHKEY`
+- `TAILSCALE_HOST_AUTHKEY`, `TS_OAUTH_CLIENT_ID`, `TS_OAUTH_CLIENT_SECRET`
 - `GITLAB_HOST`는 비워둬도 됩니다 — `TAILSCALE_HOST_AUTHKEY`를 채웠다면 `up.sh`가 Tailscale IP로 자동 채웁니다.
 
 ### 3) 미러링할 레포에 워크플로 복사
@@ -95,6 +99,5 @@ git add .github && git commit -m "Add GitLab mirroring workflow" && git push
 
 - `up.sh`/`bootstrap-gitlab.sh`는 여러 번 실행해도 안전(idempotent)합니다. 다만 미러링용 project
   access token은 재실행할 때마다 재발급되어 GitHub 시크릿이 매번 갱신됩니다.
-- [docker-compose.yml](gitlab/docker-compose.yml)의 포트 매핑은 `0.0.0.0`에 바인딩됩니다. VM에 공인 IP가
-  있다면 Tailscale 인터페이스뿐 아니라 공인 인터페이스로도 노출되니, 보안그룹/방화벽에서 해당 포트를
-  공인 IP 쪽에서는 막아두세요 (Tailscale 자체는 터널링이라 별도 인바운드 규칙이 필요 없습니다).
+- [docker-compose.yml](gitlab/docker-compose.yml)의 포트 매핑은 `127.0.0.1`과 `GITLAB_HOST`(Tailscale IP)에만
+  바인딩되어 있어서, VM에 공인 IP가 있어도 그쪽으로는 노출되지 않습니다.

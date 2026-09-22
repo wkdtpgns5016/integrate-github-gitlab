@@ -145,10 +145,11 @@ set_var()    { gh variable set "$1" --repo "$GITHUB_REPO" --body "$2" >/dev/null
 
 set_secret GITLAB_DEPLOY_USER  "$DEPLOY_USER"
 set_secret GITLAB_DEPLOY_TOKEN "$DEPLOY_TOKEN"
-if [[ -n "${TS_AUTHKEY:-}" ]]; then
-  set_secret TS_AUTHKEY "$TS_AUTHKEY"
+if [[ -n "${TS_OAUTH_CLIENT_ID:-}" && -n "${TS_OAUTH_CLIENT_SECRET:-}" ]]; then
+  set_secret TS_OAUTH_CLIENT_ID     "$TS_OAUTH_CLIENT_ID"
+  set_secret TS_OAUTH_CLIENT_SECRET "$TS_OAUTH_CLIENT_SECRET"
 else
-  log "TS_AUTHKEY 가 비어 있어 등록을 건너뜁니다. (워크플로가 필요로 하므로 나중에 직접 등록하세요)"
+  log "TS_OAUTH_CLIENT_ID/SECRET 가 비어 있어 등록을 건너뜁니다. (워크플로가 필요로 하므로 나중에 직접 등록하세요)"
 fi
 set_var GITLAB_HOST         "$PUBLIC_HOST"
 set_var GITLAB_PROJECT_PATH "$PROJECT_PATH"
