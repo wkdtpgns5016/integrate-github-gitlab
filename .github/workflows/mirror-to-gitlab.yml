@@ -1,0 +1,26 @@
+name: Mirror to GitLab
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          ping: ${{ vars.GITLAB_HOST }}
+
+      - name: Push to GitLab
+        run: |
+          git push --force "http://${{ secrets.GITLAB_DEPLOY_USER }}:${{ secrets.GITLAB_DEPLOY_TOKEN }}@${{ vars.GITLAB_HOST }}/${{ vars.GITLAB_PROJECT_PATH }}" HEAD:main
