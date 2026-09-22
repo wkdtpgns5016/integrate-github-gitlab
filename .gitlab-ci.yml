@@ -42,4 +42,6 @@ push-tag:
     - git add testfile
     # 변경사항이 없으면(=이미 같은 값) commit이 실패하므로 무시하고 넘어간다.
     - 'git commit -m "ci: update tag to ${CI_COMMIT_SHORT_SHA} [skip ci]" || echo "변경사항 없음, 커밋 건너뜀"'
-    - git push origin "HEAD:${CI_COMMIT_REF_NAME}"
+    # CI_JOB_TOKEN(기본 origin 인증)으로는 GitLab 정책상 push가 막혀 있어서,
+    # bootstrap-gitlab.sh가 등록해둔 CI_PUSH_TOKEN(project access token)으로 직접 인증한다.
+    - git push "http://oauth2:${CI_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:${CI_COMMIT_REF_NAME}"
