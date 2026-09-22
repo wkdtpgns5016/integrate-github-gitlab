@@ -3,7 +3,7 @@
 #   1) 빈 프로젝트 생성 (이미 있으면 재사용)
 #   2) 러너 생성 + gitlab-runner 컨테이너에 등록
 #   3) 미러링용 project access token 발급
-#   4) CI 파이프라인이 자기 자신에게 push할 때 쓸 토큰 발급 + GitLab CI/CD 변수 등록
+#   4) GitLab CI 파이프라인이 GitHub 로 되돌려 push할 때 쓸 GitLab CI/CD 변수 등록
 #   5) GitHub Actions 에 필요한 시크릿/변수를 gh 로 등록
 # 여러 번 실행해도 안전하다. (단, access token 은 실행할 때마다 재발급되어 GitHub 시크릿이 갱신됨)
 set -euo pipefail
@@ -139,34 +139,28 @@ DEPLOY_TOKEN="$(api POST "/projects/$PROJECT_ID/access_tokens" \
 [[ -n "$DEPLOY_TOKEN" && "$DEPLOY_TOKEN" != null ]] || die "access token 발급 실패"
 log "access token 발급 (만료: $expires_at)"
 
-# ── 4) CI 파이프라인 자기 push용 토큰 → GitLab CI/CD 변수 ──────
-# CI_JOB_TOKEN 으로는 git push 가 GitLab 자체 정책상 막혀있어서(문서화된 제약,
-# https://gitlab.com/gitlab-org/gitlab/-/issues/389060), .gitlab-ci.yml 안에서
-# 이 프로젝트 자신에게 다시 push 하려면 별도 project access token 이 필요하다.
-CI_PUSH_TOKEN_NAME=ci-push
-for id in $(api GET "/projects/$PROJECT_ID/access_tokens" | jq -r --arg n "$CI_PUSH_TOKEN_NAME" '.[] | select(.name==$n and .active) | .id'); do
-  api DELETE "/projects/$PROJECT_ID/access_tokens/$id" >/dev/null
-done
-CI_PUSH_TOKEN="$(api POST "/projects/$PROJECT_ID/access_tokens" \
-  --data-urlencode "name=$CI_PUSH_TOKEN_NAME" \
-  --data-urlencode "scopes[]=write_repository" \
-  --data-urlencode "access_level=40" \
-  --data-urlencode "expires_at=$expires_at" | jq -r .token)"
-[[ -n "$CI_PUSH_TOKEN" && "$CI_PUSH_TOKEN" != null ]] || die "CI push token 발급 실패"
-
-if api GET "/projects/$PROJECT_ID/variables/CI_PUSH_TOKEN" >/dev/null 2>&1; then
-  api PUT "/projects/$PROJECT_ID/variables/CI_PUSH_TOKEN" \
-    --data-urlencode "value=$CI_PUSH_TOKEN" \
-    --data-urlencode "masked=true" \
-    --data-urlencode "protected=true" >/dev/null
-else
-  api POST "/projects/$PROJECT_ID/variables" \
-    --data-urlencode "key=CI_PUSH_TOKEN" \
-    --data-urlencode "value=$CI_PUSH_TOKEN" \
-    --data-urlencode "masked=true" \
-    --data-urlencode "protected=true" >/dev/null
-fi
-log "CI 파이프라인용 push token 발급 + GitLab CI/CD 변수(CI_PUSH_TOKEN) 등록"
+# ── 4) GitLab CI -> GitHub push용 CI/CD 변수 ───────────────────
+# .gitlab-ci.yml 의 push-tag job 이 GitHub 로 되돌려 push할 때 쓴다.
+# GITHUB_PAT 을 재사용하므로, fine-grained 토큰이라면 Contents 권한이 지금까지의
+# Read 만으로는 부족하고 Read and write 여야 한다 (git push 에 필요).
+set_ci_var() { # set_ci_var KEY VALUE [masked=true]
+  local key="$1" value="$2" masked="${3:-true}"
+  if api GET "/projects/$PROJECT_ID/variables/$key" >/dev/null 2>&1; then
+    api PUT "/projects/$PROJECT_ID/variables/$key" \
+      --data-urlencode "value=$value" \
+      --data-urlencode "masked=$masked" \
+      --data-urlencode "protected=true" >/dev/null
+  else
+    api POST "/projects/$PROJECT_ID/variables" \
+      --data-urlencode "key=$key" \
+      --data-urlencode "value=$value" \
+      --data-urlencode "masked=$masked" \
+      --data-urlencode "protected=true" >/dev/null
+  fi
+  echo "  gitlab ci var  $key"
+}
+set_ci_var GITHUB_PUSH_TOKEN "$GITHUB_PAT"
+set_ci_var GITHUB_REPO       "$GITHUB_REPO" false
 
 # ── 5) GitHub Actions 시크릿/변수 ────────────────────────────
 log "GitHub($GITHUB_REPO) 시크릿/변수 등록"

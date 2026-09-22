@@ -42,6 +42,10 @@ push-tag:
     - git add testfile
     # 변경사항이 없으면(=이미 같은 값) commit이 실패하므로 무시하고 넘어간다.
     - 'git commit -m "ci: update tag to ${CI_COMMIT_SHORT_SHA} [skip ci]" || echo "변경사항 없음, 커밋 건너뜀"'
-    # CI_JOB_TOKEN(기본 origin 인증)으로는 GitLab 정책상 push가 막혀 있어서,
-    # bootstrap-gitlab.sh가 등록해둔 CI_PUSH_TOKEN(project access token)으로 직접 인증한다.
-    - git push "http://oauth2:${CI_PUSH_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git" "HEAD:${CI_COMMIT_REF_NAME}"
+    # CI_JOB_TOKEN(기본 origin 인증)은 push에 못 쓰고, 애초에 여긴 GitLab이 아니라
+    # GitHub 로 되돌려 push하는 것이라 GITHUB_PUSH_TOKEN(=GITHUB_PAT)으로 인증한다.
+    # main 이 아니라 test 브랜치로 보낸다 — mirror-to-gitlab.yml 은 main push 에만 반응하므로
+    # 이 push 는 애초에 그 워크플로를 트리거하지 않는다 (무한루프 걱정 없음, [skip ci] 는 이중 안전장치).
+    # --force: 이 파이프라인은 매번 GitLab main의 최신 지점에서 새로 커밋을 만들어 붙이므로,
+    # 반복 실행하면 test 브랜치의 이전 커밋과 조상 관계가 어긋나 일반 push는 non-fast-forward로 거절된다.
+    - git push --force "https://x-access-token:${GITHUB_PUSH_TOKEN}@github.com/${GITHUB_REPO}.git" "HEAD:test"
