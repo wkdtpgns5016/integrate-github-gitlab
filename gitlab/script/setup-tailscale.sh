@@ -61,7 +61,14 @@ if [[ "$state" == "Running" ]]; then
   log "이미 tailnet 에 조인되어 있음"
 else
   log "tailnet 조인 중${SUDO:+ (관리자 암호 필요할 수 있음)}"
-  $SUDO tailscale up --authkey="$TAILSCALE_HOST_AUTHKEY" --accept-routes
+  # --authkey 에 키를 직접 넘기면 ps/sudo 로그에 평문으로 남으므로,
+  # 임시 파일(소유자 전용 권한)에 담아 file: 접두사로 전달한다 (root 는 파일 소유자와 무관하게 읽을 수 있음).
+  keyfile="$(mktemp)"
+  chmod 600 "$keyfile"
+  trap 'rm -f "$keyfile"' EXIT
+  printf '%s' "$TAILSCALE_HOST_AUTHKEY" > "$keyfile"
+  $SUDO tailscale up --authkey="file:$keyfile" --accept-routes
+  rm -f "$keyfile"
 fi
 
 # ── 4) IP 확인 및 GITLAB_HOST 자동 입력 ─────────────────────

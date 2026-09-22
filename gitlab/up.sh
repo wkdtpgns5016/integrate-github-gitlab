@@ -12,6 +12,10 @@ die() { printf '\033[1;31m[up] %s\033[0m\n' "$*" >&2; exit 1; }
 
 [[ -f "$ENV_FILE" ]] || die "$ENV_FILE 가 없습니다. 'cp gitlab/.env.example gitlab/.env' 후 값을 채우세요."
 
+# .env 에는 GITHUB_PAT/GITLAB_ROOT_PASSWORD 등 민감한 값이 평문으로 들어있으므로,
+# cp 로 생성될 때 물려받는 기본 권한(보통 644, world-readable)을 소유자 전용으로 좁힌다.
+chmod 600 "$ENV_FILE"
+
 set -a; source "$ENV_FILE"; set +a
 
 for cmd in docker gh jq curl; do

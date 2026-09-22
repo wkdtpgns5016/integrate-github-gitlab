@@ -21,7 +21,10 @@ services:
         nginx['listen_port'] = 80
         nginx['listen_https'] = false
     ports:
-      - "${GITLAB_HTTP_PORT:-8088}:80"
+      # 0.0.0.0 에 바인딩하면 VM에 공인 IP가 있을 때 GitLab이 인터넷에 그대로 노출된다.
+      # localhost(부트스트랩 스크립트용)와 GITLAB_HOST(Tailscale IP, GitHub Actions용)에만 바인딩한다.
+      - "127.0.0.1:${GITLAB_HTTP_PORT:-8088}:80"
+      - "${GITLAB_HOST}:${GITLAB_HTTP_PORT:-8088}:80"
     volumes:
       - gitlab-config:/etc/gitlab
       - gitlab-logs:/var/log/gitlab
