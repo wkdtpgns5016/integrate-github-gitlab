@@ -55,21 +55,21 @@ for _ in $(seq 1 15); do
   sleep 1
 done
 
-# ── 3) 조인 (이미 로그인돼 있으면 건너뜀) ───────────────────
-state="$($SUDO tailscale status --json 2>/dev/null | jq -r '.BackendState // empty')"
-if [[ "$state" == "Running" ]]; then
-  log "이미 tailnet 에 조인되어 있음"
-else
-  log "tailnet 조인 중${SUDO:+ (관리자 암호 필요할 수 있음)}"
-  # --authkey 에 키를 직접 넘기면 ps/sudo 로그에 평문으로 남으므로,
-  # 임시 파일(소유자 전용 권한)에 담아 file: 접두사로 전달한다 (root 는 파일 소유자와 무관하게 읽을 수 있음).
-  keyfile="$(mktemp)"
-  chmod 600 "$keyfile"
-  trap 'rm -f "$keyfile"' EXIT
-  printf '%s' "$TAILSCALE_HOST_AUTHKEY" > "$keyfile"
-  $SUDO tailscale up --authkey="file:$keyfile" --accept-routes
-  rm -f "$keyfile"
-fi
+# ── 3) 조인 ──────────────────────────────────────────────
+# 로컬 데몬의 BackendState 만으로는 "관리 콘솔에서 디바이스를 삭제했는지" 알 수 없다
+# (로컬은 여전히 Running 이라고 믿고 있을 수 있음). 그래서 상태를 보고 건너뛰지 않고
+# 매번 `tailscale up` 을 실행한다 — 이미 정상 조인돼 있으면 그냥 확인만 하고 넘어가고,
+# 콘솔에서 삭제됐다면 이 호출로 재등록된다. (TAILSCALE_HOST_AUTHKEY 는 Reusable 로 발급해야
+# 재실행/재등록이 안전하게 반복된다 — 1회용 키면 두 번째 실행부터 인증이 실패한다.)
+log "tailnet 조인 확인/갱신 중${SUDO:+ (관리자 암호 필요할 수 있음)}"
+# --authkey 에 키를 직접 넘기면 ps/sudo 로그에 평문으로 남으므로,
+# 임시 파일(소유자 전용 권한)에 담아 file: 접두사로 전달한다 (root 는 파일 소유자와 무관하게 읽을 수 있음).
+keyfile="$(mktemp)"
+chmod 600 "$keyfile"
+trap 'rm -f "$keyfile"' EXIT
+printf '%s' "$TAILSCALE_HOST_AUTHKEY" > "$keyfile"
+$SUDO tailscale up --authkey="file:$keyfile" --accept-routes
+rm -f "$keyfile"
 
 # ── 4) IP 확인 및 GITLAB_HOST 자동 입력 ─────────────────────
 ip=""
